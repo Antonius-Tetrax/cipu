@@ -155,7 +155,8 @@ function render() {
     <div class="ti-tabs">${tabs}</div>
     <div class="legend">
       ${TONES.map(t => `<span><span class="sw" style="background:${COLOR[t]}"></span>${t}</span>`).join("")}
-      <span>钦定词谱: <span class="qp-tag qp-平">平</span> / <span class="qp-tag qp-仄">仄</span> / <span class="qp-tag qp-中">[平]</span><span class="qp-tag qp-中">[仄]</span>=中(本平/本仄)</span>
+      <span>字＝语料判定: <span class="qp-tag qp-平">平</span>/<span class="qp-tag qp-仄">仄</span> (≥75% 主导) · <span class="qp-tag qp-中">中</span> (无主导)</span>
+      <span>边框＝钦定词谱: <span class="ol ol-平">平</span><span class="ol ol-仄">仄</span><span class="ol ol-中">中</span></span>
       <span><span class="sw" style="background:repeating-linear-gradient(45deg,#ccc 0 3px,#eee 3px 6px)"></span>低样本 n&lt;10</span>
     </div>
     <div id="grid"></div>
@@ -184,16 +185,16 @@ function cell(p) {
   el.className = "cell" + (p.low_n ? " lown" : "") + (SEL_POS === p.pos ? " sel" : "");
   el.dataset.pos = p.pos;
   const ze = p.frac["上"] + p.frac["去"] + p.frac["入"];
-  const border = p.frac["平"] >= 75 ? "var(--ping)" : ze >= 75 ? "var(--qu)" : "var(--muted)";
+  const emp = p.frac["平"] >= 75 ? "平" : ze >= 75 ? "仄" : "中";   // empirical label (char)
+  const qBorder = p.qinpu === "平" ? "var(--ping)"                   // outline = 钦定词谱 code
+    : p.qinpu === "仄" ? "var(--qu)" : "var(--muted)";               // 中 / none -> grey
   const bars = TONES.map(t => p.frac[t] > 0 ? `<i style="width:${p.frac[t]}%;background:${COLOR[t]}"></i>` : "").join("");
-  const q = p.qinpu || "·";
-  const qtext = q === "中" && p.qinpu_base ? `[${p.qinpu_base}]` : q;
   el.innerHTML =
-    `<div class="qp qp-tag qp-${q} ${p.qinpu_rhyme ? "rhyme" : ""}">${qtext}</div>
+    `<div class="qp qp-tag qp-${emp} ${p.qinpu_rhyme ? "rhyme" : ""}">${emp}</div>
      <div class="bar">${bars}</div>
      <div class="pos">${p.pos}</div>` +
     (p.n && p.conflict / p.n >= 0.03 ? `<div class="cf" title="ORCHESTRA 校异 ${p.conflict}/${p.n}">${p.conflict}</div>` : "");
-  el.style.borderColor = border;
+  el.style.borderColor = qBorder;
   el.onmouseenter = e => showTip(e, p);
   el.onmousemove = moveTip;
   el.onmouseleave = hideTip;
