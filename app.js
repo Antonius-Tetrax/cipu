@@ -2,8 +2,8 @@
 const TONES = ["平", "上", "去", "入"];
 const COLOR = { "平": "var(--ping)", "上": "var(--shang)", "去": "var(--qu)", "入": "var(--ru)" };
 const FLAGMAP = { d: "duoyin", m: "merge", s: "supplement", n: "not_found" };
-const REGION_ORDER = ["中原·北方官话", "江淮官话", "吴语·两浙", "徽语", "赣语·江西",
-  "闽语·福建", "湘语·湖南", "巴蜀·西南官话", "客赣·岭南", "不详"];
+const REGION_ORDER = ["中原", "北方", "江浙", "江淮", "宣徽", "两湖",
+  "江西", "福建", "巴蜀", "岭南", "不详"];
 const CAP = 10;
 const $ = (s, r = document) => r.querySelector(s);
 
