@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>宋词可视化词谱</title>
+<style>
+  :root{
+    --ping:#2f6fed; --shang:#ec4899; --qu:#dc2626; --ru:#f59e0b;
+    --bg:#faf8f4; --panel:#fff; --ink:#23201b; --muted:#8d857a;
+    --line:#e7e1d8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Songti SC","STSong","SimSun",Georgia,serif;
+       background:var(--bg);color:var(--ink);font-size:15px}
+  header{padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel);position:relative}
+  header h1{margin:0;font-size:18px;font-weight:700;letter-spacing:.5px}
+  #nav{position:absolute;top:14px;right:20px;display:flex;gap:6px}
+  .navbtn{font-family:system-ui,sans-serif;font-size:13px;padding:5px 15px;border:1px solid var(--line);
+          background:#fff;border-radius:8px;cursor:pointer;color:var(--ink)}
+  .navbtn.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  #authorview{display:none;flex-direction:column;height:100%}
+  .auth-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;
+                 font-family:system-ui,sans-serif;font-size:13px;color:var(--muted)}
+  .auth-controls button{font-family:system-ui,sans-serif;font-size:12px;padding:4px 11px;border-radius:7px;
+                        border:1px solid var(--line);background:#fff;cursor:pointer;color:var(--ink)}
+  .auth-controls .sortbtn.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .auth-controls .sep{color:var(--line)}
+  .auth-controls .selcount{margin-left:auto;color:var(--ink);font-weight:600}
+  #authlist{overflow:auto;flex:1}
+  .auth-grp{font-family:system-ui,sans-serif;font-size:12.5px;font-weight:700;color:var(--ping);
+            padding:11px 8px 4px;border-bottom:2px solid var(--line);margin-top:8px;
+            display:flex;gap:10px;align-items:center;position:sticky;top:0;background:var(--bg)}
+  .auth-grp .gsel{font-size:11px;font-weight:400;color:var(--muted);cursor:pointer;
+                  border:1px solid var(--line);border-radius:5px;padding:1px 7px}
+  .auth-grp .gn{font-weight:400;color:var(--muted);font-size:11px}
+  .auth-row{display:flex;align-items:center;gap:10px;padding:5px 8px;border-bottom:1px solid var(--line)}
+  .auth-row label{display:flex;align-items:baseline;gap:9px;cursor:pointer;flex:1}
+  .auth-row input{margin:0;cursor:pointer}
+  .auth-row .nm{font-weight:600;min-width:5.5em;font-size:15px}
+  .auth-row .wc{color:#8b1a1a;font-family:system-ui,sans-serif;font-size:12px;font-weight:600;min-width:3.5em}
+  .auth-row .bio{color:var(--muted);font-family:system-ui,sans-serif;font-size:12px}
+  .auth-row .rg{color:var(--ping);font-family:system-ui,sans-serif;font-size:11px}
+  .auth-row.off{opacity:.4}
+  header .sub{color:var(--muted);font-size:12.5px;margin-top:3px;font-family:system-ui,sans-serif}
+  .wrap{display:flex;height:calc(100vh - 58px)}
+  #sidebar{width:240px;border-right:1px solid var(--line);background:var(--panel);
+           display:flex;flex-direction:column}
+  #search{margin:10px;padding:7px 9px;border:1px solid var(--line);border-radius:7px;
+          font-size:13px;font-family:system-ui,sans-serif}
+  #pailist{overflow:auto;flex:1;padding:0 6px 10px}
+  .group-h{font-family:system-ui,sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;
+           color:var(--ping);padding:9px 10px 2px;border-bottom:1px solid var(--line);margin:4px 4px 2px}
+  .pai-item{padding:7px 10px;border-radius:7px;cursor:pointer;display:flex;
+            justify-content:space-between;align-items:baseline;gap:6px}
+  .pai-item:hover{background:#f1ece3}
+  .pai-item.active{background:#eae2d3;font-weight:700}
+  .pai-item .meta{font-size:11px;color:var(--muted);font-family:system-ui,sans-serif}
+  .qp-badge{font-size:9px;background:#eef3ff;color:var(--ping);border-radius:4px;
+            padding:1px 4px;font-family:system-ui,sans-serif}
+  main{flex:1;overflow:auto;padding:18px 22px}
+  .titlebar{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+  .titlebar h2{margin:0;font-size:24px}
+  .ti-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 4px}
+  .ti-tab{font-family:system-ui,sans-serif;font-size:12px;padding:4px 10px;border:1px solid var(--line);
+          border-radius:20px;cursor:pointer;background:#fff}
+  .ti-tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .legend{font-family:system-ui,sans-serif;font-size:12px;color:var(--muted);
+          display:flex;gap:14px;flex-wrap:wrap;margin:8px 0 16px}
+  .legend b{font-weight:600}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:3px}
+  .ju{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:flex-start}
+  .ju-label{font-family:system-ui,sans-serif;font-size:10px;color:var(--muted);width:34px;
+            text-align:right;padding-top:20px;flex:none}
+  .cell{width:46px;border:1px solid var(--line);border-radius:7px;padding:4px 3px 3px;
+        cursor:pointer;background:#fff;position:relative;transition:transform .05s}
+  .cell:hover{transform:translateY(-2px);box-shadow:0 3px 10px rgba(0,0,0,.08)}
+  .cell.sel{outline:2px solid var(--ink)}
+  .cell .qp{font-size:13px;text-align:center;font-weight:700;height:18px;line-height:18px}
+  .cell .qp.rhyme::after{content:"韵";font-size:8px;color:inherit;vertical-align:super;
+                          font-family:system-ui,sans-serif;margin-left:1px}
+  .cell .bar{display:flex;height:30px;border-radius:3px;overflow:hidden;margin-top:2px;
+             background:#f0ece4}
+  .cell .bar i{display:block}
+  .cell .pos{font-family:system-ui,sans-serif;font-size:8px;color:var(--muted);text-align:center;margin-top:2px}
+  .cell.lown{background-image:repeating-linear-gradient(45deg,#0000 0 4px,rgba(0,0,0,.09) 4px 8px)}
+  .cell .cf{position:absolute;top:-5px;right:-5px;width:13px;height:13px;border-radius:50%;
+            background:var(--qu);color:#fff;font-size:8px;line-height:13px;text-align:center;
+            font-family:system-ui,sans-serif}
+  .qp-tag{font-family:system-ui,sans-serif}
+  .qp-平{color:var(--ping)} .qp-仄{color:var(--qu)} .qp-中{color:var(--muted)}
+  #tip{position:fixed;pointer-events:none;background:#23201b;color:#f5f0e8;padding:9px 11px;
+       border-radius:8px;font-size:12px;font-family:system-ui,sans-serif;max-width:280px;
+       line-height:1.5;z-index:50;display:none;box-shadow:0 6px 24px rgba(0,0,0,.3)}
+  #tip b{color:#fff}
+  #tip .trow{display:flex;justify-content:space-between;gap:10px}
+  #detail{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
+  #detail h3{margin:0 0 4px;font-size:15px;font-family:system-ui,sans-serif}
+  #detail .note{font-family:system-ui,sans-serif;font-size:11.5px;color:var(--muted);margin-bottom:10px}
+  .tone-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:4px 0 12px}
+  .tone-tab{font-family:system-ui,sans-serif;font-size:13px;padding:4px 12px;border-radius:20px;
+            cursor:pointer;border:1.5px solid var(--tc);color:var(--tc);background:#fff}
+  .tone-tab.active{background:var(--tc);color:#fff}
+  .tone-tab .tn{font-size:10px;opacity:.85;margin-left:2px}
+  .lineitem .tn.amb{color:var(--qu)}
+  .lines{display:grid;grid-template-columns:1fr 1fr;gap:4px 22px}
+  .lineitem{font-size:16px;padding:2px 0;border-bottom:1px dotted var(--line)}
+  .lineitem .au{font-family:system-ui,sans-serif;font-size:11px;color:var(--muted);margin-right:8px}
+  .lineitem .hl{color:var(--qu);font-weight:700;border-bottom:2px solid var(--qu)}
+  .lineitem .tn{font-family:system-ui,sans-serif;font-size:10px;color:var(--muted)}
+  .empty{color:var(--muted);font-family:system-ui,sans-serif;padding:40px;text-align:center}
+  .barwrap{display:flex;gap:1px}
+</style>
+</head>
+<body>
+<header>
+  <div id="nav"><button class="navbtn active" data-v="pai">词牌</button><button class="navbtn" data-v="author">作者</button></div>
+  <h1>宋词可视化词谱 <span style="font-weight:400;color:var(--muted);font-size:13px">· 平 / 上 / 去 / 入 per position</span></h1>
+  <div class="sub">Per-position tone distributions over ~21,050 Song 词 (chinese-poetry), tones from 平水韻/廣韻 (ytenx), overlaid on 钦定词谱. Corpus is uncertified — lines are illustrative, not authoritative.</div>
+</header>
+<div class="wrap">
+  <aside id="sidebar">
+    <input id="search" placeholder="搜索词牌 / filter…">
+    <div id="pailist"></div>
+  </aside>
+  <main>
+    <div id="content"><div class="empty">← 选择一个词牌 / pick a 词牌</div></div>
+    <div id="authorview">
+      <div class="auth-controls">
+        <span>排序：</span>
+        <button class="sortbtn active" data-s="count">按作品数</button>
+        <button class="sortbtn" data-s="py">按拼音</button>
+        <button class="sortbtn" data-s="year">按生年</button>
+        <button class="sortbtn" data-s="region">按籍贯地区</button>
+        <span class="sep">|</span>
+        <button id="selall">全选</button>
+        <button id="selnone">全不选</button>
+        <span id="selcount" class="selcount"></span>
+      </div>
+      <div id="authlist"></div>
+    </div>
+  </main>
+</div>
+<div id="tip"></div>
+<script src="app.js"></script>
+</body>
+</html>
