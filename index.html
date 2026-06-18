@@ -43,6 +43,8 @@
   .auth-row .rg{color:var(--ping);font-family:system-ui,sans-serif;font-size:11px}
   .auth-row.off{opacity:.4}
   header .sub{color:var(--muted);font-size:12.5px;margin-top:3px;font-family:system-ui,sans-serif}
+  header .sub a{color:var(--ping);text-decoration:none}
+  header .sub a:hover{text-decoration:underline}
   .wrap{display:flex;height:calc(100vh - 58px)}
   #sidebar{width:240px;border-right:1px solid var(--line);background:var(--panel);
            display:flex;flex-direction:column}
@@ -61,6 +63,12 @@
   main{flex:1;overflow:auto;padding:18px 22px}
   .titlebar{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6px}
   .titlebar h2{margin:0;font-size:24px}
+  .mode-toggle{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:10px 0 2px;
+               font-family:system-ui,sans-serif;font-size:12px;color:var(--muted)}
+  .mode-btn{font-family:system-ui,sans-serif;font-size:12px;padding:4px 12px;border:1px solid var(--line);
+            border-radius:20px;cursor:pointer;background:#fff;color:var(--ink)}
+  .mode-btn.active{background:var(--ping);color:#fff;border-color:var(--ping)}
+  .mode-hint{color:var(--muted);font-size:11.5px}
   .ti-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 4px}
   .ti-tab{font-family:system-ui,sans-serif;font-size:12px;padding:4px 10px;border:1px solid var(--line);
           border-radius:20px;cursor:pointer;background:#fff}
@@ -119,7 +127,7 @@
 <header>
   <div id="nav"><button class="navbtn active" data-v="pai">词牌</button><button class="navbtn" data-v="author">作者</button></div>
   <h1>宋词可视化词谱 <span style="font-weight:400;color:var(--muted);font-size:13px">· 平 / 上 / 去 / 入 per position</span></h1>
-  <div class="sub">Per-position tone distributions (平/上/去/入) over ~21,050 Song 词 (chinese-poetry), tones from 平水韻/廣韻 (ytenx). Click a position for example lines, or filter the corpus by author (region · era · output) in the 作者 tab. Corpus is uncertified — example lines are illustrative, not authoritative.</div>
+  <div class="sub">Per-position tone distributions over ~21,600 ci 词 from Tang through Song dynasties. Tonal information are extracted from 平水韵 (or the most-common reading in 广韵). Click a position for example lines, or filter by author in the 作者 tab. Corpus is taken from the <a href="https://github.com/chinese-poetry/chinese-poetry" target="_blank" rel="noopener">chinese-poetry database</a> and is uncertified. Example lines are illustrative, not authoritative.</div>
 </header>
 <div class="wrap">
   <aside id="sidebar">
@@ -145,6 +153,6 @@
   </main>
 </div>
 <div id="tip"></div>
-<script src="app.js"></script>
+<script src="app.js?v=20260618"></script>
 </body>
 </html>

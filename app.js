@@ -1,4 +1,5 @@
 "use strict";
+const V = "20260618";                 // bump on each publish to bust browser cache (app + data)
 const TONES = ["平", "上", "去", "入"];
 const COLOR = { "平": "var(--ping)", "上": "var(--shang)", "去": "var(--qu)", "入": "var(--ru)" };
 const FLAGMAP = { d: "duoyin", m: "merge", s: "supplement", n: "not_found" };
@@ -6,18 +7,35 @@ const REGION_ORDER = ["中原", "北方", "江浙", "江淮", "宣徽", "两湖"
   "江西", "福建", "巴蜀", "岭南", "不详"];
 const CAP = 10;
 const $ = (s, r = document) => r.querySelector(s);
+const CN_DIGIT = "〇一二三四五六七八九";
+function cn(n) {                                  // 1..39 -> ≤2-char 中文数字 (廿/卅 keep 句label ≤3)
+  if (n < 10) return CN_DIGIT[n];
+  if (n === 20) return "二十";
+  if (n < 20) return "十" + (n % 10 ? CN_DIGIT[n % 10] : "");
+  if (n < 30) return "廿" + (n % 10 ? CN_DIGIT[n % 10] : "");
+  if (n < 40) return "卅" + (n % 10 ? CN_DIGIT[n % 10] : "");
+  const t = Math.floor(n / 10), o = n % 10;      // 40+ (not expected; max tune = 28 句)
+  return CN_DIGIT[t] + "十" + (o ? CN_DIGIT[o] : "");
+}
 
 let INDEX = null, CUR = null, CUR_TI = 0, SEL_POS = null, SEL_TONE = null;
 let AUTHORS = [], A_BY_NAME = {}, SELECTED = new Set(), VIEW = "pai", AUTHOR_SORT = "count";
+let TONE_MODE = "smart", PRIMARY = {};        // smart=智能判定 (default) | pure=纯单音字
+const MODE_NAME = { smart: "智能判定", pure: "纯单音字" };
+const MODE_HINT = {
+  smart: "resolve toward the position's empirical dominant tone",
+  pure: "count single-reading characters only",
+};
 const COUNT_BANDS = [[500, Infinity, "500 首以上"], [200, 499, "200–499 首"],
   [100, 199, "100–199 首"], [50, 99, "50–99 首"], [20, 49, "20–49 首"],
   [10, 19, "10–19 首"], [5, 9, "5–9 首"], [1, 4, "1–4 首"]];
 const bandOf = n => (COUNT_BANDS.find(([lo, hi]) => n >= lo && n <= hi) || COUNT_BANDS.at(-1))[2];
 
 async function boot() {
-  [INDEX, AUTHORS] = await Promise.all([
-    fetch("data/index.json").then(r => r.json()),
-    fetch("data/authors.json").then(r => r.json()),
+  [INDEX, AUTHORS, PRIMARY] = await Promise.all([
+    fetch("data/index.json?v=" + V).then(r => r.json()),
+    fetch("data/authors.json?v=" + V).then(r => r.json()),
+    fetch("data/primary.json?v=" + V).then(r => r.json()).catch(() => ({})),
   ]);
   AUTHORS.forEach(a => { A_BY_NAME[a.name] = a; });
   SELECTED = new Set(AUTHORS.map(a => a.name));
@@ -75,29 +93,46 @@ function renderList(filter) {
 }
 
 async function loadPai(pai) {
-  CUR = await (await fetch("data/" + encodeURIComponent(pai) + ".json")).json();
+  CUR = await (await fetch("data/" + encodeURIComponent(pai) + ".json?v=" + V)).json();
   CUR_TI = 0; SEL_POS = null; SEL_TONE = null;
   renderList($("#search").value.trim());
   render();
 }
 
 /* ---------------- client-side aggregation over selected authors ---------------- */
+// empirical prevailing coding of a position from its 纯单音字 distribution (same ≥75% rule)
+function prevailingOf(u) {
+  const n = TONES.reduce((s, t) => s + u[t], 0);
+  if (!n) return null;
+  if (100 * u["平"] / n >= 75) return "平";
+  if (100 * (u["上"] + u["去"] + u["入"]) / n >= 75) return "仄";
+  return "中";
+}
+// 智能判定: resolve a multi-reading char to ONE tone. `tones` = its 平水韵-sanctioned readings;
+// `order` = its most-common→least ranking. Resolve toward the position's empirical prevailing
+// coding when a sanctioned reading allows it; else keep the char's most-common reading (anomaly).
+function resolveSmart(tones, prevailing, order) {
+  const rank = (order && order.length ? order.filter(t => tones.includes(t)) : []);
+  const ord = rank.length ? rank.concat(tones.filter(t => !rank.includes(t))) : tones;
+  let permitted;
+  if (prevailing === "平") permitted = tones.filter(t => t === "平");
+  else if (prevailing === "仄") permitted = tones.filter(t => t !== "平");
+  else permitted = tones;                              // 中 / no 纯单音字 basis → unconstrained
+  if (permitted.length) return ord.find(t => permitted.includes(t)) || permitted[0];
+  return ord[0];                                       // anomaly: char can't be prevailing tone
+}
+
 function aggregate(ti) {
-  const np = ti.zishu, q = ti.qinpu;
+  const np = ti.zishu, q = ti.qinpu, smart = TONE_MODE === "smart";
   const mk = () => ({ "平": 0, "上": 0, "去": 0, "入": 0 });
-  const frac = [], fracN = new Array(np).fill(0), unamb = [], toneN = [],
-    flags = [], conflict = new Array(np).fill(0), exUn = [], exAm = [];
-  for (let i = 0; i < np; i++) {
-    frac.push(mk()); unamb.push(mk()); toneN.push(mk()); flags.push({});
-    exUn.push({ "平": [], "上": [], "去": [], "入": [] });
-    exAm.push({ "平": [], "上": [], "去": [], "入": [] });
-  }
-  let nInst = 0, matched = 0;
+  const mkex = () => ({ "平": [], "上": [], "去": [], "入": [] });
+  const unamb = [], flags = [], exUn = [];
+  for (let i = 0; i < np; i++) { unamb.push(mk()); flags.push({}); exUn.push(mkex()); }
+  const sel = [];
+  // pass 1 — 纯单音字 counts + flags + unambiguous examples (also the prevailing-coding basis)
   for (const ins of ti.instances) {
     if (!SELECTED.has(ins.a)) continue;
-    nInst++;
-    if (ins.M) matched++;
-    if (ins.x) ins.x.forEach(p => conflict[p]++);
+    sel.push(ins);
     const chars = [...ins.L], fsp = ins.f || {};
     for (let pos = 0; pos < np; pos++) {
       const code = fsp[pos];
@@ -105,30 +140,55 @@ function aggregate(ti) {
       const ts = ins.t[pos];
       if (!ts) continue;
       const tones = [...ts];
-      fracN[pos]++;
-      const w = 1 / tones.length, single = tones.length === 1;
-      if (single) unamb[pos][tones[0]]++;
-      for (const t of tones) {
-        frac[pos][t] += w; toneN[pos][t]++;
-        const bk = single ? exUn[pos][t] : exAm[pos][t];
-        if (bk.length < CAP) bk.push({ author: ins.a, char: chars[pos], line: ins.L, amb: !single, tones });
+      if (tones.length === 1) {
+        unamb[pos][tones[0]]++;
+        const bk = exUn[pos][tones[0]];
+        if (bk.length < CAP) bk.push({ author: ins.a, char: chars[pos], line: ins.L, amb: false });
       }
     }
+  }
+  const prevailing = unamb.map(prevailingOf);
+  // active-mode counts + examples
+  const cnt = [], exMode = [], inferred = new Array(np).fill(0);
+  for (let i = 0; i < np; i++) { cnt.push(Object.assign(mk(), unamb[i])); exMode.push(mkex()); }
+  if (smart) {                                          // pass 2 — resolve multi-reading chars
+    const exAm = []; for (let i = 0; i < np; i++) exAm.push(mkex());
+    for (const ins of sel) {
+      const chars = [...ins.L];
+      for (let pos = 0; pos < np; pos++) {
+        const ts = ins.t[pos];
+        if (!ts) continue;
+        const tones = [...ts];
+        if (tones.length === 1) continue;
+        const r = resolveSmart(tones, prevailing[pos], PRIMARY[chars[pos]]);
+        cnt[pos][r]++; inferred[pos]++;
+        const bk = exAm[pos][r];
+        if (bk.length < CAP) bk.push({ author: ins.a, char: chars[pos], line: ins.L, amb: true, tones, resolved: r });
+      }
+    }
+    for (let pos = 0; pos < np; pos++)
+      for (const t of TONES) {        // reserve slots so resolved 多音字 examples stay visible
+        const amb = exAm[pos][t], reserve = Math.min(amb.length, 4);
+        exMode[pos][t] = exUn[pos][t].slice(0, CAP - reserve).concat(amb).slice(0, CAP);
+      }
+  } else {
+    for (let pos = 0; pos < np; pos++) exMode[pos] = exUn[pos];
   }
   const pct = (o, n) => { const r = {}; for (const t of TONES) r[t] = n ? Math.round(1000 * o[t] / n) / 10 : 0; return r; };
   const positions = [], examples = [];
   for (let pos = 0; pos < np; pos++) {
-    const fn = fracN[pos], un = TONES.reduce((s, t) => s + unamb[pos][t], 0);
+    const n = TONES.reduce((s, t) => s + cnt[pos][t], 0);
+    const un = TONES.reduce((s, t) => s + unamb[pos][t], 0);
     positions.push({
-      pos, n: fn, n_unamb: un, low_n: fn < 10, frac: pct(frac[pos], fn), unamb: pct(unamb[pos], un),
-      flags: flags[pos], conflict: conflict[pos],
+      pos, n, n_unamb: un, inferred: inferred[pos], low_n: n < 10,
+      dist: pct(cnt[pos], n), prevailing: prevailing[pos], flags: flags[pos],
       qinpu: q ? q.codes[pos] : null, qinpu_rhyme: q ? q.rhyme[pos] : null, qinpu_base: q ? q.base[pos] : null,
     });
     const d = {};
-    for (const t of TONES) if (toneN[pos][t]) d[t] = { n: toneN[pos][t], ex: exUn[pos][t].concat(exAm[pos][t]).slice(0, CAP) };
+    for (const t of TONES) if (cnt[pos][t]) d[t] = { n: cnt[pos][t], ex: exMode[pos][t] };
     examples.push(d);
   }
-  return { positions, examples, nInst, matched };
+  return { positions, examples, nInst: sel.length };
 }
 
 /* ---------------- 词牌 detail view ---------------- */
@@ -153,6 +213,8 @@ function render() {
   c.innerHTML = `
     <div class="titlebar"><h2>${CUR.pai}</h2>
       <span class="meta" style="color:var(--muted);font-family:system-ui">共 ${CUR.n_total} 首 · ${CUR.ti.length} 体（n≥${INDEX.min_ti}） · <b style="color:var(--ink)">${selTxt}</b>：此体 n=${AGG.nInst}</span></div>
+    <div class="mode-toggle">声调统计：${["smart", "pure"].map(m =>
+      `<button class="mode-btn ${TONE_MODE === m ? "active" : ""}" data-mode="${m}" title="${MODE_HINT[m]}">${MODE_NAME[m]}</button>`).join("")}</div>
     <div class="ti-tabs">${tabs}</div>
     <div class="legend">
       ${TONES.map(t => `<span><span class="sw" style="background:${COLOR[t]}"></span>${t}</span>`).join("")}
@@ -162,6 +224,8 @@ function render() {
     </div>
     <div id="grid"></div>
     <div id="detail"></div>`;
+  c.querySelectorAll(".mode-btn").forEach(el =>
+    el.onclick = () => { if (TONE_MODE === el.dataset.mode) return; TONE_MODE = el.dataset.mode; render(); });
   c.querySelectorAll(".ti-tab").forEach(el =>
     el.onclick = () => { CUR_TI = +el.dataset.i; SEL_POS = null; SEL_TONE = null; render(); });
   renderGrid(ti.signature, AGG.positions);
@@ -175,7 +239,7 @@ function renderGrid(signature, positions) {
   for (const len of signature) {
     const row = document.createElement("div");
     row.className = "ju";
-    row.innerHTML = `<div class="ju-label">句${++ju}<br>(${len})</div>`;
+    row.innerHTML = `<div class="ju-label">句${cn(++ju)}<br>(${len})</div>`;
     for (let k = 0; k < len; k++) row.appendChild(cell(positions[pos++]));
     g.appendChild(row);
   }
@@ -185,16 +249,15 @@ function cell(p) {
   const el = document.createElement("div");
   el.className = "cell" + (p.low_n ? " lown" : "") + (SEL_POS === p.pos ? " sel" : "");
   el.dataset.pos = p.pos;
-  const ze = p.frac["上"] + p.frac["去"] + p.frac["入"];
-  const emp = p.frac["平"] >= 75 ? "平" : ze >= 75 ? "仄" : "中";   // empirical label (char)
+  const ze = p.dist["上"] + p.dist["去"] + p.dist["入"];
+  const emp = p.dist["平"] >= 75 ? "平" : ze >= 75 ? "仄" : "中";    // empirical label (char)
   const qBorder = p.qinpu === "平" ? "var(--ping)"                   // outline = 钦定词谱 code
     : p.qinpu === "仄" ? "var(--qu)" : "var(--muted)";               // 中 / none -> grey
-  const bars = TONES.map(t => p.frac[t] > 0 ? `<i style="width:${p.frac[t]}%;background:${COLOR[t]}"></i>` : "").join("");
+  const bars = TONES.map(t => p.dist[t] > 0 ? `<i style="width:${p.dist[t]}%;background:${COLOR[t]}"></i>` : "").join("");
   el.innerHTML =
     `<div class="qp qp-tag qp-${emp} ${p.qinpu_rhyme ? "rhyme" : ""}">${emp}</div>
      <div class="bar">${bars}</div>
-     <div class="pos">${p.pos}</div>` +
-    (p.n && p.conflict / p.n >= 0.03 ? `<div class="cf" title="ORCHESTRA 校异 ${p.conflict}/${p.n}">${p.conflict}</div>` : "");
+     <div class="pos">${p.pos + 1}</div>`;
   el.style.borderColor = qBorder;
   el.onmouseenter = e => showTip(e, p);
   el.onmousemove = moveTip;
@@ -204,16 +267,18 @@ function cell(p) {
 }
 
 function showTip(e, p) {
-  const t = $("#tip"), f = p.frac, u = p.unamb;
+  const t = $("#tip"), f = p.dist;
   const flags = Object.entries(p.flags || {}).map(([k, v]) => `${k}:${v}`).join(", ") || "—";
   const qbase = p.qinpu === "中" && p.qinpu_base ? `（本${p.qinpu_base}）` : "";
+  const inferTxt = TONE_MODE === "smart"
+    ? `<div style="color:#bbb">本位主导：${p.prevailing || "—"} · 推定多音字 ${p.inferred} 字（纯单音字 n=${p.n_unamb}）</div>`
+    : `<div style="color:#bbb">多音字一律不计</div>`;
   t.innerHTML =
-    `<div><b>位置 ${p.pos}</b> · 钦定词谱：<b>${p.qinpu || "?"}</b>${qbase}${p.qinpu_rhyme ? " 韵" : ""}</div>
-     <div style="margin:5px 0 2px">分数法 (n=${p.n}):</div>
+    `<div><b>位置 ${p.pos + 1}</b> · 钦定词谱：<b>${p.qinpu || "?"}</b>${qbase}${p.qinpu_rhyme ? " 韵" : ""}</div>
+     <div style="margin:5px 0 2px">${MODE_NAME[TONE_MODE]} (n=${p.n}):</div>
      ${TONES.map(x => `<div class="trow"><span><span class="sw" style="background:${COLOR[x]}"></span>${x}</span><b>${f[x]}%</b></div>`).join("")}
-     <div style="margin:6px 0 2px;color:#bbb">无歧义法 (n=${p.n_unamb}): ${TONES.map(x => `${x}${u[x]}`).join(" ")}</div>
-     <div style="color:#bbb">多音污染: ${flags}</div>
-     <div style="color:#bbb">ORCHESTRA 校异: ${p.conflict}</div>`;
+     ${inferTxt}
+     <div style="color:#bbb">多音字: ${flags}</div>`;
   t.style.display = "block"; moveTip(e);
 }
 function moveTip(e) {
@@ -228,16 +293,19 @@ function hideTip() { $("#tip").style.display = "none"; }
 function renderDetail(examples, positions, pos, scroll) {
   const p = positions[pos], data = examples[pos] || {}, d = $("#detail");
   const present = TONES.filter(t => data[t]);
-  const dom = TONES.reduce((a, t) => p.frac[t] > p.frac[a] ? t : a, "平");
+  const dom = TONES.reduce((a, t) => p.dist[t] > p.dist[a] ? t : a, "平");
   const qd = p.qinpu === "中" && p.qinpu_base ? `中·本${p.qinpu_base}` : (p.qinpu || "?");
-  if (!present.length) { d.innerHTML = `<h3>位置 ${pos} — 钦定词谱「${qd}」</h3><div class="empty">无实例</div>`; return; }
-  if (!present.includes(SEL_TONE)) SEL_TONE = present.reduce((a, t) => p.frac[t] > p.frac[a] ? t : a, present[0]);
+  if (!present.length) { d.innerHTML = `<h3>位置 ${pos + 1} — 钦定词谱「${qd}」</h3><div class="empty">此模式下无实例</div>`; return; }
+  if (!present.includes(SEL_TONE)) SEL_TONE = present.reduce((a, t) => p.dist[t] > p.dist[a] ? t : a, present[0]);
   const tabs = present.map(t =>
     `<div class="tone-tab ${t === SEL_TONE ? "active" : ""}" data-tone="${t}" style="--tc:${COLOR[t]}">${t} <span class="tn">n=${data[t].n}</span></div>`).join("");
   const ex = data[SEL_TONE].ex;
+  const note = TONE_MODE === "smart"
+    ? "高亮字＝该位置；多音字标 ※，列出平水韵候选与本位判定（→），排在无歧义例之后。语料未校勘，仅供参考、不作定本。"
+    : "纯单音字模式：仅含单一读音的字（多音字不计）。高亮字＝该位置。语料未校勘，仅供参考、不作定本。";
   d.innerHTML =
-    `<h3>位置 ${pos} — 钦定词谱「${qd}」 · 语料 ${dom} ${p.frac[dom]}%（n=${p.n}）</h3>
-     <div class="note">点击声调标签切换。高亮字＝该位置；多音字标 ※（可能出现在多个声调下，已排在该声调的无歧义例之后）。语料未校勘，仅供参考、不作定本。</div>
+    `<h3>位置 ${pos + 1} — 钦定词谱「${qd}」 · 语料 ${dom} ${p.dist[dom]}%（${MODE_NAME[TONE_MODE]} n=${p.n}）</h3>
+     <div class="note">点击声调标签切换。${note}</div>
      <div class="tone-tabs">${tabs}</div>
      <div class="lines">${ex.map(e => lineHTML(e, pos)).join("")}</div>`;
   d.querySelectorAll(".tone-tab").forEach(el =>
@@ -247,7 +315,7 @@ function renderDetail(examples, positions, pos, scroll) {
 function lineHTML(e, pos) {
   const chars = [...e.line];
   const body = chars.map((ch, i) => i === pos ? `<span class="hl">${ch}</span>` : ch).join("");
-  const tag = e.amb ? `<span class="tn amb" title="多音字">※${(e.tones || []).join("/")}</span>` : "";
+  const tag = e.amb ? `<span class="tn amb" title="多音字判定">※${(e.tones || []).join("/")}→${e.resolved}</span>` : "";
   return `<div class="lineitem"><span class="au">${e.author || "?"}</span>${body}${tag}</div>`;
 }
 
