@@ -64,11 +64,12 @@ function renderList(filter) {
         const h = document.createElement("div");
         h.className = "group-h"; h.textContent = p.init; list.appendChild(h);
       }
+      const target = p.alias_of || p.pai;
       const d = document.createElement("div");
-      d.className = "pai-item" + (CUR && CUR.pai === p.pai ? " active" : "");
+      d.className = "pai-item" + (CUR && CUR.pai === target ? " active" : "");
       d.innerHTML = `<span>${p.pai}</span><span class="meta">${paiCount(p)}
         ${p.has_qinpu ? '<span class="qp-badge">谱</span>' : ""}</span>`;
-      d.onclick = () => loadPai(p.pai);
+      d.onclick = () => loadPai(target);
       list.appendChild(d);
     });
 }
