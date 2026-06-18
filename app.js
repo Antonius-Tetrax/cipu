@@ -1,5 +1,5 @@
 "use strict";
-const V = "20260618c";                // bump on each publish to bust browser cache (app + data)
+const V = "20260618e";                // bump on each publish to bust browser cache (app + data)
 const TONES = ["平", "上", "去", "入"];
 const COLOR = { "平": "var(--ping)", "上": "var(--shang)", "去": "var(--qu)", "入": "var(--ru)" };
 const FLAGMAP = { d: "duoyin", m: "merge", s: "supplement", n: "not_found" };
@@ -211,11 +211,16 @@ function render() {
   const ti = CUR.ti[CUR_TI];
   const AGG = aggregate(ti);
   CUR._agg = AGG;
+  // poems (in selection) that fall in sub-threshold 零散变体 not shown in any 体
+  const idx = INDEX.pai.find(p => !p.alias_of && p.pai === CUR.pai);
+  const shownSum = tiN.reduce((a, b) => a + b, 0);
+  const variants = Math.max(0, (idx ? paiCount(idx) : CUR.n_total) - shownSum);
+  const variantNote = variants > 0 ? `（另 ${variants} 首零散变体略）` : "";
   const tabs = CUR.ti.map((t, i) => tiN[i] > 0
-    ? `<div class="ti-tab ${i === CUR_TI ? "active" : ""}" data-i="${i}">体${i + 1} · ${t.zishu}字 · n=${tiN[i]}${t.has_qinpu ? " · 谱" : ""}</div>` : "").join("");
+    ? `<div class="ti-tab ${i === CUR_TI ? "active" : ""}" data-i="${i}">体${i + 1} · ${t.zishu}字 · 显示 ${tiN[i]} 首${t.has_qinpu ? " · 谱" : ""}</div>` : "").join("");
   c.innerHTML = `
     <div class="titlebar"><h2>${title}</h2>
-      <span class="meta" style="color:var(--muted);font-family:system-ui">共 ${CUR.n_total} 首 · ${CUR.ti.length} 体（n≥${INDEX.min_ti}） · <b style="color:var(--ink)">${selTxt}</b>：此体 n=${AGG.nInst}</span></div>
+      <span class="meta" style="color:var(--muted);font-family:system-ui">共 ${CUR.n_total} 首 · ${CUR.ti.length} 体（n≥${INDEX.min_ti}） · <b style="color:var(--ink)">${selTxt}</b>：此体显示 ${AGG.nInst} 首${variantNote}</span></div>
     <div class="mode-toggle">声调统计：${["smart", "pure"].map(m =>
       `<button class="mode-btn ${TONE_MODE === m ? "active" : ""}" data-mode="${m}" title="${MODE_HINT[m]}">${MODE_NAME[m]}</button>`).join("")}</div>
     <div class="ti-tabs">${tabs}</div>
