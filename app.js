@@ -1,5 +1,5 @@
 "use strict";
-const V = "20260618";                 // bump on each publish to bust browser cache (app + data)
+const V = "20260618c";                // bump on each publish to bust browser cache (app + data)
 const TONES = ["平", "上", "去", "入"];
 const COLOR = { "平": "var(--ping)", "上": "var(--shang)", "去": "var(--qu)", "入": "var(--ru)" };
 const FLAGMAP = { d: "duoyin", m: "merge", s: "supplement", n: "not_found" };
@@ -196,10 +196,13 @@ function render() {
   const c = $("#content");
   const selN = SELECTED.size, allN = AUTHORS.length;
   const selTxt = selN === allN ? "全部作者" : `已选 ${selN}/${allN} 位作者`;
+  // alias names shown in the left column that resolve to this 词牌 -> 又名 annotation
+  const aka = INDEX.pai.filter(p => p.alias_of === CUR.pai).map(p => p.pai);
+  const title = `${CUR.pai}${aka.length ? `<span class="aka">又名${aka.join("、")}</span>` : ""}`;
   // filtered instance count per 体
   const tiN = CUR.ti.map(t => { let n = 0; for (const ins of t.instances) if (SELECTED.has(ins.a)) n++; return n; });
   if (tiN.every(n => n === 0)) {
-    c.innerHTML = `<div class="titlebar"><h2>${CUR.pai}</h2>
+    c.innerHTML = `<div class="titlebar"><h2>${title}</h2>
       <span class="meta" style="color:var(--muted);font-family:system-ui">共 ${CUR.n_total} 首 · <b style="color:var(--ink)">${selTxt}</b></span></div>
       <div class="empty">当前作者筛选下，此词牌无作品</div>`;
     return;
@@ -211,7 +214,7 @@ function render() {
   const tabs = CUR.ti.map((t, i) => tiN[i] > 0
     ? `<div class="ti-tab ${i === CUR_TI ? "active" : ""}" data-i="${i}">体${i + 1} · ${t.zishu}字 · n=${tiN[i]}${t.has_qinpu ? " · 谱" : ""}</div>` : "").join("");
   c.innerHTML = `
-    <div class="titlebar"><h2>${CUR.pai}</h2>
+    <div class="titlebar"><h2>${title}</h2>
       <span class="meta" style="color:var(--muted);font-family:system-ui">共 ${CUR.n_total} 首 · ${CUR.ti.length} 体（n≥${INDEX.min_ti}） · <b style="color:var(--ink)">${selTxt}</b>：此体 n=${AGG.nInst}</span></div>
     <div class="mode-toggle">声调统计：${["smart", "pure"].map(m =>
       `<button class="mode-btn ${TONE_MODE === m ? "active" : ""}" data-mode="${m}" title="${MODE_HINT[m]}">${MODE_NAME[m]}</button>`).join("")}</div>
