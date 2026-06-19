@@ -13,6 +13,5 @@ host (GitHub Pages works; double-clicking `index.html` locally will not).
 - 词 corpus: [chinese-poetry](https://github.com/chinese-poetry/chinese-poetry) (MIT)
 - Tones: 平水韻 / 廣韻 via [ytenx](https://github.com/BYVoid/ytenx)
 - 词谱 overlay: 钦定词谱 via [blankego/LyricPatterns](https://github.com/blankego/LyricPatterns) (MIT)
-- Cross-check witness: [nk2028/ORCHESTRA](https://github.com/nk2028/ORCHESTRA-dataset)
 
 Corpus text is uncertified; example lines are illustrative, not an authoritative edition.
