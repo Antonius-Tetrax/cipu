@@ -1,5 +1,5 @@
 "use strict";
-const V = "20260618e";                // bump on each publish to bust browser cache (app + data)
+const V = "20260618f";                // bump on each publish to bust browser cache (app + data)
 const TONES = ["平", "上", "去", "入"];
 const COLOR = { "平": "var(--ping)", "上": "var(--shang)", "去": "var(--qu)", "入": "var(--ru)" };
 const FLAGMAP = { d: "duoyin", m: "merge", s: "supplement", n: "not_found" };
@@ -50,10 +50,16 @@ async function boot() {
   });
   $("#selall").onclick = () => { AUTHORS.forEach(a => SELECTED.add(a.name)); afterSelChange(); };
   $("#selnone").onclick = () => { SELECTED.clear(); afterSelChange(); };
+  // mobile 词牌-list drawer
+  document.body.classList.add("view-pai");
+  $("#menuBtn").onclick = () => document.body.classList.toggle("drawer-open");
+  $("#menuBackdrop").onclick = () => document.body.classList.remove("drawer-open");
 }
 
 function setView(v) {
   VIEW = v;
+  document.body.classList.toggle("view-pai", v === "pai");
+  document.body.classList.remove("drawer-open");
   document.querySelectorAll(".navbtn").forEach(b => b.classList.toggle("active", b.dataset.v === v));
   $("#sidebar").style.display = v === "pai" ? "" : "none";
   $("#content").style.display = v === "pai" ? "" : "none";
@@ -95,6 +101,7 @@ function renderList(filter) {
 async function loadPai(pai) {
   CUR = await (await fetch("data/" + encodeURIComponent(pai) + ".json?v=" + V)).json();
   CUR_TI = 0; SEL_POS = null; SEL_TONE = null;
+  document.body.classList.remove("drawer-open");   // close the mobile drawer after picking
   renderList($("#search").value.trim());
   render();
 }
