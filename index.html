@@ -24,7 +24,7 @@
                  font-family:system-ui,sans-serif;font-size:13px;color:var(--muted)}
   .auth-controls button{font-family:system-ui,sans-serif;font-size:12px;padding:4px 11px;border-radius:7px;
                         border:1px solid var(--line);background:#fff;cursor:pointer;color:var(--ink)}
-  .auth-controls .sortbtn.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .auth-controls .sortbtn.active,.auth-controls .selbtn.active{background:var(--ink);color:#fff;border-color:var(--ink)}
   .auth-controls .sep{color:var(--line)}
   .auth-controls .selcount{margin-left:auto;color:var(--ink);font-weight:600}
   #authlist{overflow:auto;flex:1}
@@ -164,10 +164,10 @@
         <button class="sortbtn" data-s="year">按生年</button>
         <button class="sortbtn" data-s="region">按籍贯地区</button>
         <span class="sep">|</span>
-        <button id="selall">全选</button>
-        <button id="selnone">全不选</button>
-        <button id="selkey">仅重要词人</button>
-        <button id="selgenre">仅格律词派</button>
+        <button id="selall" class="selbtn">全选</button>
+        <button id="selnone" class="selbtn">全不选</button>
+        <button id="selkey" class="selbtn">仅重要词人</button>
+        <button id="selgenre" class="selbtn">仅格律词派</button>
         <span id="selcount" class="selcount"></span>
       </div>
       <div id="authlist"></div>
@@ -177,6 +177,6 @@
 <div id="tip"></div>
 <button id="menuBtn" class="menu-btn" aria-label="打开词牌列表">☰ 词牌</button>
 <div id="menuBackdrop" class="menu-backdrop"></div>
-<script src="app.js?v=20260619d"></script>
+<script src="app.js?v=20260619e"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 "use strict";
-const V = "20260619d";                // bump on each publish to bust browser cache (app + data)
+const V = "20260619e";                // bump on each publish to bust browser cache (app + data)
 const TONES = ["平", "上", "去", "入"];
 const COLOR = { "平": "var(--ping)", "上": "var(--shang)", "去": "var(--qu)", "入": "var(--ru)" };
 const FLAGMAP = { d: "duoyin", m: "merge", s: "supplement", n: "not_found" };
@@ -21,6 +21,7 @@ function cn(n) {                                  // 1..39 -> ≤2-char 中文�
 let INDEX = null, CUR = null, CUR_TI = 0, SEL_POS = null, SEL_TONE = null;
 let AUTHORS = [], A_BY_NAME = {}, SELECTED = new Set(), VIEW = "pai", AUTHOR_SORT = "count";
 let TONE_MODE = "smart", PRIMARY = {};        // smart=智能判定 (default) | pure=仅单音字
+let SEL_PRESET = null;                          // active 作者 quick-select: all|none|key|genre|null
 const MODE_NAME = { smart: "智能判定", pure: "仅单音字" };
 const MODE_HINT = {
   smart: "resolve toward the position's empirical dominant tone",
@@ -48,6 +49,7 @@ async function boot() {
   AUTHORS.forEach(a => { A_BY_NAME[a.name] = a; });
   SELECTED = new Set(AUTHORS.map(a => a.name));
   loadSelection();
+  SEL_PRESET = detectPreset(); updatePresetButtons();
   renderList("");
   $("#search").addEventListener("input", e => renderList(e.target.value.trim()));
   document.querySelectorAll(".navbtn").forEach(b => b.onclick = () => setView(b.dataset.v));
@@ -56,11 +58,10 @@ async function boot() {
     document.querySelectorAll(".sortbtn").forEach(x => x.classList.toggle("active", x === b));
     renderAuthors();
   });
-  $("#selall").onclick = () => { AUTHORS.forEach(a => SELECTED.add(a.name)); afterSelChange(); };
-  $("#selnone").onclick = () => { SELECTED.clear(); afterSelChange(); };
-  const selectOnly = list => { SELECTED = new Set(list.filter(n => A_BY_NAME[n])); afterSelChange(); };
-  $("#selkey").onclick = () => selectOnly(KEY_POETS);
-  $("#selgenre").onclick = () => selectOnly(GENRE_POETS);
+  $("#selall").onclick = () => { AUTHORS.forEach(a => SELECTED.add(a.name)); setPreset("all"); afterSelChange(); };
+  $("#selnone").onclick = () => { SELECTED.clear(); setPreset("none"); afterSelChange(); };
+  $("#selkey").onclick = () => { SELECTED = new Set(KEY_POETS.filter(n => A_BY_NAME[n])); setPreset("key"); afterSelChange(); };
+  $("#selgenre").onclick = () => { SELECTED = new Set(GENRE_POETS.filter(n => A_BY_NAME[n])); setPreset("genre"); afterSelChange(); };
   // mobile 词牌-list drawer
   document.body.classList.add("view-pai");
   $("#menuBtn").onclick = () => document.body.classList.toggle("drawer-open");
@@ -386,6 +387,7 @@ function renderAuthors() {
       const names = g.members.map(a => a.name);
       const allOn = names.every(n => SELECTED.has(n));
       names.forEach(n => allOn ? SELECTED.delete(n) : SELECTED.add(n));
+      clearPreset();                            // group toggle = manual change
       afterSelChange();
     };
     wrap.appendChild(h);
@@ -410,10 +412,24 @@ function authorRow(a) {
   row.querySelector("input").onchange = e => {
     e.target.checked ? SELECTED.add(a.name) : SELECTED.delete(a.name);
     row.classList.toggle("off", !e.target.checked);
+    clearPreset();                              // individual toggle = manual change
     updateCount(); saveSelection();
   };
   return row;
 }
+
+const PRESET_BTN = { all: "#selall", none: "#selnone", key: "#selkey", genre: "#selgenre" };
+function presetMatch(list) { const s = list.filter(n => A_BY_NAME[n]); return SELECTED.size === s.length && s.every(n => SELECTED.has(n)); }
+function detectPreset() {
+  if (SELECTED.size === AUTHORS.length) return "all";
+  if (!SELECTED.size) return "none";
+  if (presetMatch(KEY_POETS)) return "key";
+  if (presetMatch(GENRE_POETS)) return "genre";
+  return null;                                  // any other (e.g. manually edited) selection
+}
+function updatePresetButtons() { for (const k in PRESET_BTN) { const el = $(PRESET_BTN[k]); if (el) el.classList.toggle("active", SEL_PRESET === k); } }
+function setPreset(p) { SEL_PRESET = p; updatePresetButtons(); }
+function clearPreset() { SEL_PRESET = null; updatePresetButtons(); }
 
 function afterSelChange() { renderAuthors(); saveSelection(); }
 function updateCount() {
