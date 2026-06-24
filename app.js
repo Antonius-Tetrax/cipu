@@ -1,5 +1,5 @@
 "use strict";
-const V = "20260619j";                // bump on each publish to bust browser cache (app + data)
+const V = "20260619k";                // bump on each publish to bust browser cache (app + data)
 const TONES = ["平", "上", "去", "入"];
 const COLOR = { "平": "var(--ping)", "上": "var(--shang)", "去": "var(--qu)", "入": "var(--ru)" };
 const FLAGMAP = { d: "duoyin", m: "merge", s: "supplement", n: "not_found" };
@@ -127,18 +127,25 @@ function prevailingOf(u) {
   if (100 * (u["上"] + u["去"] + u["入"]) / n >= 75) return "仄";
   return "中";
 }
-// 智能判定: resolve a multi-reading char to ONE tone. `tones` = its 平水韵-sanctioned readings;
-// `order` = its most-common→least ranking. Resolve toward the position's empirical prevailing
-// coding when a sanctioned reading allows it; else keep the char's most-common reading (anomaly).
-function resolveSmart(tones, prevailing, order) {
+// 智能判定: resolve a multi-reading char to ONE tone, two-step over the position's 单音字 dist:
+//   1. register — whichever of 平 vs 仄(上+去+入) is larger at this position wins (plurality);
+//   2. specific — 平 register → 平; 仄 register → the dominant 仄 reading the char can take
+//      (argmax of 上/去/入 counts over the char's 仄 candidates). `order` (per-char rank) only
+//      breaks ties / supplies a fallback when the position has no 单音字 signal.
+function resolveSmart(tones, dist, order) {
   const rank = (order && order.length ? order.filter(t => tones.includes(t)) : []);
   const ord = rank.length ? rank.concat(tones.filter(t => !rank.includes(t))) : tones;
-  let permitted;
-  if (prevailing === "平") permitted = tones.filter(t => t === "平");
-  else if (prevailing === "仄") permitted = tones.filter(t => t !== "平");
-  else permitted = tones;                              // 中 / no 仅单音字 basis → unconstrained
-  if (permitted.length) return ord.find(t => permitted.includes(t)) || permitted[0];
-  return ord[0];                                       // anomaly: char can't be prevailing tone
+  const ping = dist["平"], ze = dist["上"] + dist["去"] + dist["入"];
+  if (!ping && !ze) return ord[0];                     // no empirical signal → rank
+  if (ping >= ze) return tones.includes("平") ? "平" : ord[0];   // 平 register (anomaly → rank)
+  const zeCand = tones.filter(t => t !== "平");
+  if (!zeCand.length) return tones.includes("平") ? "平" : ord[0];
+  let best = null, bestN = -1;                          // dominant 仄 reading the char can take
+  for (const t of ord) {                               // iterate in rank order so ties → rank
+    if (!zeCand.includes(t)) continue;
+    if (dist[t] > bestN) { best = t; bestN = dist[t]; }
+  }
+  return best;
 }
 
 function aggregate(ti) {
@@ -179,7 +186,7 @@ function aggregate(ti) {
         if (!ts) continue;
         const tones = [...ts];
         if (tones.length === 1) continue;
-        const r = resolveSmart(tones, prevailing[pos], PRIMARY[chars[pos]]);
+        const r = resolveSmart(tones, unamb[pos], PRIMARY[chars[pos]]);
         cnt[pos][r]++; inferred[pos]++;
         const bk = exAm[pos][r];
         if (bk.length < CAP) bk.push({ author: ins.a, char: chars[pos], line: ins.L, amb: true, tones, resolved: r });
